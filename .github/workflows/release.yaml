@@ -1,0 +1,49 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release'
+        required: false
+        default: latest
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/keystore"
+
+      - name: Build APK
+        run: ./gradlew :android:assembleRelease
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+
+      - name: Delete last release
+        run: gh release delete "${{ inputs.tag_name }}" --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
+        run: |
+          cp android/build/outputs/apk/release/*.apk "$RUNNER_TEMP/messina.apk"
+          gh release create "${{ inputs.tag_name }}" --latest \
+          "$RUNNER_TEMP/messina.apk"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
