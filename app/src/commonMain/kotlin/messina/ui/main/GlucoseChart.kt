@@ -376,7 +376,7 @@ fun DrawScope.drawChart(
 
     // Threshold lines
     val thresholdColor = colorScheme.error.copy(alpha = 0.5f)
-    Settings.alarms.filterIsInstance<Alarm.Glucose>().forEach {
+    Settings.alarms.filterIsInstance<Alarm.Glucose>().filter { it.enabled }.forEach {
         drawDashedHorizontalLine(it.threshold.value, thresholdColor)
     }
 
