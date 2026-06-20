@@ -557,7 +557,8 @@ fun MainScreen(
                             )
                         }
                         MenuGridItem(
-                            label = "Log reading",
+//                            label = "Log reading",
+                            label = "Placeholder",
                             onClick = { showAddMenu = false },
                         ) {
                             Text("✎", fontSize = 32.sp, color = colorScheme.onSurface)
@@ -568,13 +569,15 @@ fun MainScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
                         MenuGridItem(
-                            label = "Add note",
+//                            label = "Add note",
+                            label = "Placeholder",
                             onClick = { showAddMenu = false },
                         ) {
                             Text("✉", fontSize = 32.sp, color = colorScheme.onSurface)
                         }
                         MenuGridItem(
-                            label = "Log meal",
+//                            label = "Log meal",
+                            label = "Placeholder",
                             onClick = { showAddMenu = false },
                         ) {
                             Text("⊕", fontSize = 32.sp, color = colorScheme.onSurface)
