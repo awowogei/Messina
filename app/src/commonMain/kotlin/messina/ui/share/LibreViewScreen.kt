@@ -29,7 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import messina.sharing.LibreView
+import messina.backup.LibreView
 import messina.ui.BackButton
 import messina.ui.SwitchRow
 import messina.ui.TextInput
@@ -89,8 +89,8 @@ private fun LoggedInBody() {
     ) {
         SwitchRow(
             label = "Sync data",
-            checked = LibreView.syncData,
-            onCheckedChange = { LibreView.syncData = it },
+            checked = LibreView.syncEnabled,
+            onCheckedChange = { LibreView.syncEnabled = it },
         )
     }
 }

@@ -1,19 +1,16 @@
-package messina.sharing
+package messina.backup
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import messina.Database
+import messina.sensors.GlucoseReading
 import messina.sensors.Sensor
-import messina.sensors.Sensors
-import messina.settings.GlucoseUnit
 import messina.settings.Settings
 import messina.http.Http
 import kotlinx.coroutines.Job
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.format
 import kotlinx.datetime.format.DateTimeComponents
-import kotlinx.datetime.format.char
 import kotlinx.datetime.format.format
 import kotlinx.datetime.offsetAt
 import kotlinx.serialization.Serializable
@@ -22,7 +19,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.math.roundToInt
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -32,6 +28,17 @@ private const val GATEWAY = "FSLibreLink3.Android"
 private const val APP_PLATFORM = "Android/14/FSL3/3.3.0.9092"
 
 class LibreViewException(message: String) : RuntimeException(message)
+
+@Serializable
+private data class LibreViewJson(
+    val email: String = "",
+    val password: String = "",
+    val accountUuid: String? = null,
+    val userToken: String? = null,
+    val deviceId: String = "",
+    val syncEnabled: Boolean = false,
+    val requireAccount: Boolean = true,
+)
 
 object LibreView {
     private var _email: String by mutableStateOf("")
@@ -68,13 +75,11 @@ object LibreView {
 
     var status: String? by mutableStateOf(null)
 
-    private val sensorStates: MutableMap<Long, SensorSyncState> = mutableMapOf()
-
-    private var _syncData: Boolean by mutableStateOf(false)
-    var syncData: Boolean
-        get() = _syncData
+    private var _syncEnabled: Boolean by mutableStateOf(false)
+    var syncEnabled: Boolean
+        get() = _syncEnabled
         set(value) {
-            _syncData = value; save()
+            _syncEnabled = value; save()
         }
 
     // Require an account in order to connect to libre sensors
@@ -90,7 +95,7 @@ object LibreView {
     fun logout() {
         accountUuid = null
         userToken = null
-        _syncData = false
+        _syncEnabled = false
         save()
     }
 
@@ -188,32 +193,11 @@ object LibreView {
             _password = data.password
             accountUuid = data.accountUuid
             userToken = data.userToken
-            _syncData = data.syncData
+            _syncEnabled = data.syncEnabled
             _requireAccount = data.requireAccount
             if (data.deviceId.isNotEmpty()) deviceId = data.deviceId
-            sensorStates.putAll(data.sensorStates.mapKeys { it.key.toLong() })
         }
-        pruneSensorStates()
         save()
-    }
-
-    // Drops state for sensors that no longer exist in the DB or are past 15 days from activation.
-    private fun pruneSensorStates() {
-        if (sensorStates.isEmpty()) return
-        val now = Clock.System.now()
-        val keep = mutableSetOf<Long>()
-        Database.execute("SELECT rowid, sensor FROM sensors") { rows ->
-            for (row in rows) {
-                val rowid = row.getLong(0)
-                if (rowid !in sensorStates) continue
-                val sensor =
-                    runCatching { Json.decodeFromString<Sensor>(row.getText(1)) }.getOrNull()
-                if (sensor is Sensor.Libre3 && (now - sensor.activationTime) < 15.days) {
-                    keep += rowid
-                }
-            }
-        }
-        sensorStates.keys.retainAll(keep)
     }
 
     private fun save() {
@@ -223,9 +207,8 @@ object LibreView {
             accountUuid = accountUuid,
             userToken = userToken,
             deviceId = deviceId,
-            syncData = _syncData,
+            syncEnabled = _syncEnabled,
             requireAccount = _requireAccount,
-            sensorStates = sensorStates.mapKeys { it.key.toString() },
         )
         Database.execute(
             "INSERT OR REPLACE INTO storage (key, value) VALUES ('libreview', ?)",
@@ -233,57 +216,66 @@ object LibreView {
         )
     }
 
-    suspend fun sendMeasurements() {
+    suspend fun upload(sensor: Sensor, history: List<GlucoseReading>) {
+        if (!this.syncEnabled || !this.loggedIn || sensor !is Sensor.Libre3 || history.isEmpty()) return
+        val tz = TimeZone.currentSystemDefault()
+        val serialBits = serialBits(sensor.serialNumber.decodeToString())
+
+        val readings = history
+            .distinctBy { it.time.epochSeconds / 300 }
+            .map { reading ->
+                mapOf(
+                    "extendedProperties" to mapOf(
+                        "canMerge" to true,
+                        "isFirstAfterTimeChange" to false,
+                        "factoryTimestamp" to gmtTimestamp(reading.time),
+                    ),
+                    "recordNumber" to (serialBits or ((reading.time.epochSeconds / 300) and 0x7FFFF)),
+                    "timestamp" to localTimestamp(reading.time, tz),
+                    "valueInMgPerDl" to reading.glucose.toMgDl(),
+                )
+            }
+        post(readings)
+    }
+
+    suspend fun register(sensor: Sensor) {
+        if (sensor !is Sensor.Libre3) return
+        val tz = TimeZone.currentSystemDefault()
+        val serialBits = serialBits(sensor.serialNumber.decodeToString())
+
+        post(
+            newSensor = mapOf(
+                "type" to "com.abbottdiabetescare.informatics.sensorstart",
+                "extendedProperties" to mapOf(
+                    "factoryTimestamp" to gmtTimestamp(sensor.activationTime),
+                    "puckGen" to 0,
+                    "wearDuration" to 21600,
+                    "warmupTime" to 60,
+                    "productType" to 4,
+                ),
+                "recordNumber" to (serialBits or (sensor.activationTime.epochSeconds / 60 and 0x7FFFF)),
+                "timestamp" to localTimestamp(Clock.System.now(), tz),
+            )
+        )
+    }
+
+    private suspend fun post(
+        readings: List<Map<String, Any>> = emptyList(),
+        newSensor: Map<String, Any>? = null,
+    ) {
         val token = userToken ?: throw LibreViewException("Not logged in")
         val (baseUrl, apiKey) = fetchConfig()
 
         val now = Clock.System.now()
         val tz = TimeZone.currentSystemDefault()
 
-        val current = mutableListOf<Map<String, Any>>()
-        val scheduled = mutableListOf<Map<String, Any>>()
-        val generic = mutableListOf<Map<String, Any>>()
-        // sensorId.value -> latestReadingEpochSeconds
-        val touched = mutableListOf<Pair<Long, Long>>()
-
-        for (sensor in Sensors.active) {
-            if (sensor !is Sensor.Libre3) continue
-            val state = sensorStates[sensor.id.value] ?: SensorSyncState()
-            val serialBits = serialBits(sensor.serialNumber.decodeToString())
-
-            val readings = Database.execute(
-                "SELECT time, glucose FROM glucose_history WHERE sensor_id = ? AND time > ? ORDER BY time ASC",
-                arrayOf(sensor.id.value, state.lastReadingTime),
-            ) { rows ->
-                buildList {
-                    for (row in rows) add(row.getLong(0) to row.getDouble(1))
-                }
-            }
-            if (readings.isEmpty() && state.announced) continue
-
-            if (!state.announced) {
-                generic += sensorStartEntry(sensor, serialBits, tz)
-            }
-
-            readings.dropLast(1).forEach { (timeSec, mgdl) ->
-                scheduled += historicEntry(Instant.fromEpochSeconds(timeSec), mgdl, serialBits, tz)
-            }
-            readings.lastOrNull()?.let { (timeSec, mgdl) ->
-                current += currentEntry(Instant.fromEpochSeconds(timeSec), mgdl, serialBits, tz)
-            }
-            readings.lastOrNull()?.let { touched += sensor.id.value to it.first }
-        }
-
-        if (current.isEmpty() && scheduled.isEmpty() && generic.isEmpty()) return
-
         val targetLowMgDl = Settings.targetRange.first.toMgDl().roundToInt()
         val targetHighMgDl = Settings.targetRange.second.toMgDl().roundToInt()
-        val uom = if (Settings.glucoseUnit == GlucoseUnit.Mmol) "mmol/L" else "mg/dL"
 
         val body = mapOf(
             "DeviceData" to mapOf(
                 "deviceSettings" to mapOf(
-                    "factoryConfig" to mapOf("UOM" to uom),
+                    "factoryConfig" to mapOf("UOM" to Settings.glucoseUnit.toString()),
                     "firmwareVersion" to "3.3.0",
                     "miscellaneous" to mapOf(
                         "selectedLanguage" to "en-US",
@@ -296,8 +288,8 @@ object LibreView {
                 ),
                 "header" to mapOf(
                     "device" to mapOf(
-                        "hardwareDescriptor" to "messina",
-                        "hardwareName" to "messina",
+                        "hardwareDescriptor" to "android",
+                        "hardwareName" to "android",
                         "modelName" to "com.freestylelibre3.app.de",
                         "osType" to "Android",
                         "osVersion" to "14",
@@ -314,11 +306,11 @@ object LibreView {
                         "generic-com.abbottdiabetescare.informatics.sensorstart",
                         "generic-com.abbottdiabetescare.informatics.sensorEnd",
                     ),
-                    "currentGlucoseEntries" to current,
+                    "currentGlucoseEntries" to emptyList<Any>(),
                     "foodEntries" to emptyList<Any>(),
-                    "genericEntries" to generic,
+                    "genericEntries" to listOfNotNull(newSensor),
                     "insulinEntries" to emptyList<Any>(),
-                    "scheduledContinuousGlucoseEntries" to scheduled,
+                    "scheduledContinuousGlucoseEntries" to readings,
                     "unscheduledContinuousGlucoseEntries" to emptyList<Any>(),
                 )
             ),
@@ -346,23 +338,9 @@ object LibreView {
         if (status != 0) {
             throw LibreViewException("Measurements status=$status")
         }
-
-        for ((sensorIdValue, lastTime) in touched) {
-            sensorStates[sensorIdValue] =
-                SensorSyncState(announced = true, lastReadingTime = lastTime)
-        }
-        save()
     }
 }
 
-@Serializable
-private data class SensorSyncState(
-    val announced: Boolean = false,
-    val lastReadingTime: Long = 0L,
-)
-
-// Decodes one character of a Libre serial to its 5-bit value. The alphabet is 0-9 then A-Z
-// with B,I,O,S folded onto 8,1,0,5 (the easily-confused glyphs).
 private fun serialCharBits(c: Char): Int {
     val ch = when (c.uppercaseChar()) {
         'B' -> '8'; 'I' -> '1'; 'O' -> '0'; 'S' -> '5'
@@ -378,19 +356,10 @@ private fun serialCharBits(c: Char): Int {
     }
 }
 
-// LibreView's recordNumber for a reading is `serialBits | readingBits`: the upper bits encode
-// which sensor it came from (this function), the lower bits encode which reading within the
-// sensor. For a Libre 3 serial (9 base-32 chars = 45 bits), the result occupies bits 19..63,
-// leaving 19 low bits for the per-reading id.
 private fun serialBits(serial: String): Long {
     var acc = 0L
     for (ch in serial) acc = (acc shl 5) or serialCharBits(ch).toLong()
     return acc shl 19
-}
-
-private fun recordNumber(serialBits: Long, sensor: Sensor.Libre3, time: Instant): Long {
-    val minutes = ((time - sensor.activationTime).inWholeMinutes).coerceAtLeast(0).toInt()
-    return serialBits or (minutes and 0x7FFFF).toLong()
 }
 
 private fun localTimestamp(instant: Instant, tz: TimeZone): String {
@@ -401,69 +370,3 @@ private fun localTimestamp(instant: Instant, tz: TimeZone): String {
 }
 
 private fun gmtTimestamp(instant: Instant): String = instant.toString()
-
-private fun sensorStartEntry(
-    sensor: Sensor.Libre3,
-    serialBits: Long,
-    tz: TimeZone,
-): Map<String, Any> {
-    val now = Clock.System.now()
-    return mapOf(
-        "type" to "com.abbottdiabetescare.informatics.sensorstart",
-        "extendedProperties" to mapOf(
-            "factoryTimestamp" to gmtTimestamp(sensor.activationTime),
-            "puckGen" to 0,
-            "wearDuration" to 21600,
-            "warmupTime" to 60,
-            "productType" to 4,
-        ),
-        "recordNumber" to recordNumber(serialBits, sensor, sensor.activationTime),
-        "timestamp" to localTimestamp(now, tz),
-    )
-}
-
-private fun historicEntry(
-    time: Instant,
-    mgdl: Double,
-    serialBits: Long,
-    tz: TimeZone,
-): Map<String, Any> = mapOf(
-    "extendedProperties" to mapOf(
-        "canMerge" to true,
-        "isFirstAfterTimeChange" to false,
-        "factoryTimestamp" to gmtTimestamp(time),
-    ),
-    "recordNumber" to (serialBits or ((time.epochSeconds / 300) and 0x7FFFF)),
-    "timestamp" to localTimestamp(time, tz),
-    "valueInMgPerDl" to mgdl,
-)
-
-private fun currentEntry(
-    time: Instant,
-    mgdl: Double,
-    serialBits: Long,
-    tz: TimeZone,
-): Map<String, Any> = mapOf(
-    "extendedProperties" to mapOf(
-        "trendArrow" to "Undetermined",
-        "isActionable" to true,
-        "isViewed" to false,
-        "factoryTimestamp" to gmtTimestamp(time),
-        "isFirstAfterTimeChange" to false,
-    ),
-    "recordNumber" to (serialBits or ((time.epochSeconds / 300) and 0x7FFFF)),
-    "timestamp" to localTimestamp(time, tz),
-    "valueInMgPerDl" to mgdl,
-)
-
-@Serializable
-private data class LibreViewJson(
-    val email: String = "",
-    val password: String = "",
-    val accountUuid: String? = null,
-    val userToken: String? = null,
-    val deviceId: String = "",
-    val syncData: Boolean = false,
-    val requireAccount: Boolean = true,
-    val sensorStates: Map<String, SensorSyncState> = emptyMap(),
-)

@@ -64,14 +64,12 @@ import messina.sensors.SensorId
 import messina.sensors.Sensors
 import messina.sensors.Smoothing
 import messina.settings.AlarmController
-import messina.sharing.LibreView
+import messina.backup.LibreView
 import messina.utils.Time
 import messina.utils.format
-import messina.logging.info
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
 
 @Composable
 private fun TimeSinceLabel(

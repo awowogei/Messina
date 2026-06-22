@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.keepScreenOn
 import androidx.compose.runtime.remember
 import messina.sensors.Sensors
+import messina.backup.Backup
 import messina.settings.Settings
 import messina.settings.Theme
 import messina.ui.main.MainScreen
@@ -25,6 +26,16 @@ import messina.ui.settings.AlarmScreen
 import messina.ui.settings.SettingsScreen
 import messina.ui.share.LibreViewScreen
 import messina.ui.share.ShareScreen
+
+object GlobalState {
+    fun initialize() {
+        // Initialize objects
+        Database
+        Settings
+        Sensors
+        Backup
+    }
+}
 
 @Composable
 fun App() {
@@ -133,14 +144,5 @@ fun App() {
                     onBack = { navController.popBackStack() })
             }
         }
-    }
-}
-
-object GlobalState {
-    fun initialize() {
-        // Initialize objects
-        Database
-        Settings
-        Sensors
     }
 }

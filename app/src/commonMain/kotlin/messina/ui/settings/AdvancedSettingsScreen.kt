@@ -11,7 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import messina.sharing.LibreView
+import messina.backup.LibreView
 import messina.ui.BackButton
 import messina.ui.SwitchRow
 

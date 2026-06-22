@@ -371,7 +371,7 @@ private class Connection(
                 GlucoseReading(
                     sensor.id,
                     sensor.activationTime + reading.time,
-                    reading.glucose
+                    sensor.calibrateReading(reading.glucose)
                 )
             )
         }
@@ -397,7 +397,7 @@ private class Connection(
             GlucoseReading(
                 sensor.id,
                 sensor.activationTime + shortHistory.time,
-                shortHistory.glucose
+                sensor.calibrateReading(shortHistory.glucose)
             )
         )
         EventLog.push(sensor.id, shortHistory.serialize())
