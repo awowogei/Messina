@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -17,7 +18,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.content.ContextCompat
 import messina.App
-import messina.GlobalState
 import messina.settings.Theme
 
 class MainActivity : ComponentActivity() {
@@ -42,8 +42,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        GlobalState.initialize()
 
         val serviceIntent = Intent(this, ForegroundService::class.java)
         startForegroundService(serviceIntent)
@@ -79,13 +77,26 @@ class MainActivity : ComponentActivity() {
         permissionsDialog = null
     }
 
+    private fun ensureBatteryExemption() {
+        if (getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) return
+
+        startActivity(
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+        )
+    }
+
     private fun ensurePermissions() {
         if (permissionsDialog != null) return
 
         val missing = requiredPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) return
+        if (missing.isEmpty()) {
+            ensureBatteryExemption()
+            return
+        }
 
         permissionsDialog = if (!hasRequestedPermissions) {
             AlertDialog.Builder(this)
@@ -101,7 +112,7 @@ class MainActivity : ComponentActivity() {
         } else {
             AlertDialog.Builder(this)
                 .setTitle("Permissions Denied")
-                .setMessage("An error occurred, or permissions were denied. Click \"permissions\" in the settings to grant them.")
+                .setMessage("Permissions were permanently denied. Click \"permissions\" in the settings to grant them.")
                 .setCancelable(false)
                 .setPositiveButton("Go to settings") { _, _ ->
                     permissionsDialog = null

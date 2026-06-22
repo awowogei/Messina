@@ -15,6 +15,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
+import messina.GlobalState
 import messina.android.R
 import messina.sensors.SensorEvents
 import androidx.compose.runtime.snapshotFlow
@@ -36,6 +37,8 @@ class ForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
+        GlobalState.initialize()
 
         createNotificationChannel()
     }
@@ -95,7 +98,7 @@ class ForegroundService : Service() {
         if (Settings.statusBarGlucose) {
             builder.setSmallIcon(buildTextIcon())
         } else {
-            builder.setSmallIcon(R.mipmap.messina)
+            builder.setSmallIcon(R.drawable.messina_foreground)
         }
         return builder.build()
     }
