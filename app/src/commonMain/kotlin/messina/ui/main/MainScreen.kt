@@ -151,7 +151,7 @@ private fun GlucoseDisplay(
         } else {
             sensor.recentReadings
         }
-        val trend: Glucose = Smoothing.Strong.apply(trendReadings)
+        val trend: Glucose = Smoothing.ENABLED.apply(trendReadings)
             .takeIf { it.size >= 2 }
             ?.let { Glucose.fromMgDl(it[it.size - 1].glucose.toMgDl() - it[it.size - 2].glucose.toMgDl()) }
             ?: Glucose.fromMgDl(0.0)

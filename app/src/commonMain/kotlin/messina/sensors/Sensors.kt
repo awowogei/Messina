@@ -39,16 +39,9 @@ private const val RECENT_LIMIT = 15
 data class SensorId(val value: Long)
 
 @Serializable
-enum class Smoothing(val alphaPerMinute: Double) {
-    None(1.0),
-    Weak(0.9),
-    Medium(0.6),
-    Strong(0.3);
-
-    fun next(): Smoothing = entries[(ordinal + 1) % entries.size]
-
+data class Smoothing(private val alphaPerMinute: Double) {
     fun apply(readings: List<GlucoseReading>): List<GlucoseReading> {
-        if (readings.isEmpty() || this == None) return readings
+        if (readings.isEmpty() || this == DISABLED) return readings
 
         val decay = 1.0 - this.alphaPerMinute
         val out = ArrayList<GlucoseReading>(readings.size)
@@ -62,6 +55,11 @@ enum class Smoothing(val alphaPerMinute: Double) {
             out += reading.copy(glucose = Glucose.fromMgDl(ema))
         }
         return out
+    }
+
+    companion object {
+        val DISABLED = Smoothing(1.0)
+        val ENABLED = Smoothing(0.3)
     }
 }
 
@@ -151,7 +149,7 @@ sealed class Sensor {
         }
 
     @SerialName("smoothing")
-    private var _smoothing = Smoothing.None
+    private var _smoothing = Smoothing.DISABLED
     private val smoothingState by lazy { mutableStateOf(_smoothing) }
     var smoothing: Smoothing
         get() = smoothingState.value
