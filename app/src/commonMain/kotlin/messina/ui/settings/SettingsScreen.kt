@@ -107,13 +107,6 @@ fun SettingsScreen(
                 modifier = Modifier.background(MaterialTheme.colorScheme.surface)
             )
             HorizontalDivider()
-            SwitchRow(
-                label = "Show glucose in status bar",
-                checked = Settings.statusBarGlucose,
-                onCheckedChange = { Settings.statusBarGlucose = it },
-                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
-            )
-            HorizontalDivider()
             ChoiceRow(
                 label = "Color theme",
                 value = Settings.theme.name,

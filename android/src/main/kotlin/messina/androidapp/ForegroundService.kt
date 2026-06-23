@@ -16,12 +16,9 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
 import messina.GlobalState
-import messina.android.R
 import messina.sensors.SensorEvents
-import androidx.compose.runtime.snapshotFlow
 import messina.Glucose
 import messina.settings.AlarmController
-import messina.settings.Settings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,12 +61,6 @@ class ForegroundService : Service() {
         }
 
         serviceScope.launch {
-            snapshotFlow { Settings.statusBarGlucose }.collect {
-                updateNotification()
-            }
-        }
-
-        serviceScope.launch {
             AlarmController.active.collect { updateNotification() }
         }
 
@@ -95,11 +86,7 @@ class ForegroundService : Service() {
             .setContentIntent(buildContentIntent())
             .setOngoing(true)           // makes it non-dismissable by the user
             .setOnlyAlertOnce(true)     // no sound/vibration on updates
-        if (Settings.statusBarGlucose) {
-            builder.setSmallIcon(buildTextIcon())
-        } else {
-            builder.setSmallIcon(R.drawable.messina_foreground)
-        }
+            .setSmallIcon(buildTextIcon())
         return builder.build()
     }
 

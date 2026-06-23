@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
         } else {
             AlertDialog.Builder(this)
                 .setTitle("Permissions Denied")
-                .setMessage("Permissions were permanently denied. Click \"permissions\" in the settings to grant them.")
+                .setMessage("Permissions have been permanently denied. Click \"permissions\" in the settings to grant them.")
                 .setCancelable(false)
                 .setPositiveButton("Go to settings") { _, _ ->
                     permissionsDialog = null

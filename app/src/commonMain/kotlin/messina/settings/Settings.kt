@@ -21,7 +21,6 @@ import kotlinx.serialization.json.Json
 private data class SettingsJson(
     val glucoseUnit: GlucoseUnit = GlucoseUnit.Mmol,
     val keepScreenOn: Boolean = false,
-    val statusBarGlucose: Boolean = true,
     val theme: Theme = Theme.System,
     val alarms: List<Alarm> = listOf(
         Alarm.Connection(),
@@ -45,13 +44,6 @@ object Settings {
         get() = _keepScreenOn
         set(value) {
             _keepScreenOn = value; save()
-        }
-
-    private var _statusBarGlucose: Boolean by mutableStateOf(true)
-    var statusBarGlucose: Boolean
-        get() = _statusBarGlucose
-        set(value) {
-            _statusBarGlucose = value; save()
         }
 
     private var _theme: Theme by mutableStateOf(Theme.System)
@@ -84,7 +76,6 @@ object Settings {
             val data = Json.decodeFromString<SettingsJson>(json)
             _glucoseUnit = data.glucoseUnit
             _keepScreenOn = data.keepScreenOn
-            _statusBarGlucose = data.statusBarGlucose
             _theme = data.theme
             _targetRange = Pair(data.targetRangeLow, data.targetRangeHigh)
             alarms.clear()
@@ -108,7 +99,6 @@ object Settings {
         val data = SettingsJson(
             glucoseUnit,
             keepScreenOn,
-            statusBarGlucose,
             theme,
             alarms.toList(),
             targetRange.first,
