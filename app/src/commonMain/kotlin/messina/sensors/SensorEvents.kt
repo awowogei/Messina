@@ -21,11 +21,11 @@ object SensorEvents {
     /// A sensor has been disconnected
     val sensorDisconnected = _Events<SensorId>()
 
-    /// A raw glucose reading from a sensor
-    val glucoseReading = _Events<GlucoseReading>()
+    /// A new glucose reading from a sensor
+    val glucoseReading = _Events<GlucoseEvent>()
 
     /// New history read from a sensor
-    val history = _Events<GlucoseHistory>()
+    val history = _Events<HistoryEvent>()
 
     class _Events<T> {
         private val _events = MutableSharedFlow<T>(extraBufferCapacity = 256)
@@ -44,15 +44,16 @@ object SensorEvents {
 
 }
 
-data class GlucoseHistory(
-    val sensorId: SensorId,
-    val from: Instant,
-    val to: Instant,
-)
-
-data class GlucoseReading(
+data class GlucoseEvent(
     val sensorId: SensorId,
     val time: Instant,
     val glucose: Glucose,
+    val trend: Glucose?,
+)
+
+data class HistoryEvent(
+    val sensorId: SensorId,
+    val from: Instant,
+    val to: Instant,
 )
 

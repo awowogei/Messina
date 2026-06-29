@@ -1,7 +1,6 @@
 package messina.sensors
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,44 +23,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 import kotlin.math.exp
-import kotlin.math.pow
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.DurationUnit
 import kotlin.time.Instant
 
-// How many minutes of recent readings are  kept in memory per sensor for smoothing purposes.
+// How many minutes of recent readings are kept in memory per sensor.
 private const val RECENT_LIMIT = 15
 
 @Serializable
 data class SensorId(val value: Long)
-
-@Serializable
-data class Smoothing(private val alphaPerMinute: Double) {
-    fun apply(readings: List<GlucoseReading>): List<GlucoseReading> {
-        if (readings.isEmpty() || this == NONE) return readings
-
-        val decay = 1.0 - this.alphaPerMinute
-        val out = ArrayList<GlucoseReading>(readings.size)
-        var ema = readings.first().glucose.toMgDl()
-        var prev = readings.first().time
-        for (reading in readings) {
-            val dt = (reading.time - prev).toDouble(DurationUnit.MINUTES)
-            val alpha = 1.0 - decay.pow(dt)
-            ema = alpha * reading.glucose.toMgDl() + (1 - alpha) * ema
-            prev = reading.time
-            out += reading.copy(glucose = Glucose.fromMgDl(ema))
-        }
-        return out
-    }
-
-    companion object {
-        val NONE = Smoothing(1.0)
-        val WEAK = Smoothing(0.3)
-    }
-}
 
 @Serializable
 sealed class Sensor {
@@ -148,32 +120,24 @@ sealed class Sensor {
             this.save()
         }
 
-    @SerialName("smoothing")
-    private var _smoothing = Smoothing.NONE
-    private val smoothingState by lazy { mutableStateOf(_smoothing) }
-    var smoothing: Smoothing
-        get() = smoothingState.value
+    @SerialName("smoothingEnabled")
+    private var _smoothingEnabled = false
+    private val smoothingEnabledState by lazy { mutableStateOf(_smoothingEnabled) }
+    var smoothingEnabled: Boolean
+        get() = smoothingEnabledState.value
         set(value) {
-            _smoothing = value
-            smoothingState.value = value
+            _smoothingEnabled = value
+            smoothingEnabledState.value = value
             this.save()
         }
 
     @Transient
-    val recentReadings = mutableStateListOf<GlucoseReading>()
-    fun latestReading(): GlucoseReading? = this.smoothing.apply(recentReadings).lastOrNull()
+    val readings = GlucoseReadings(RECENT_LIMIT.minutes)
 
-    fun latestTrend(): Glucose? = trend(recentReadings)
+    fun latestReading(): GlucoseReading? =
+        (if (smoothingEnabled) readings.smoothed() else readings.raw).lastOrNull()
 
-    fun trend(readings: List<GlucoseReading>): Glucose? {
-        val smoothed = Smoothing.WEAK.apply(readings)
-        if (smoothed.size < 2) return null
-        val last = smoothed[smoothed.size - 1]
-        val prev = smoothed[smoothed.size - 2]
-        val elapsedMins = (last.time - prev.time).toDouble(DurationUnit.MINUTES)
-        if (elapsedMins <= 0.0 || elapsedMins > 5.0) return null
-        return Glucose.fromMgDl((last.glucose.toMgDl() - prev.glucose.toMgDl()) / elapsedMins)
-    }
+    fun latestTrend(): Glucose? = readings.trend()
 
     // Displays as the time since the last reading above the glucose on the main screen
     var lastReadingTime: Instant? by mutableStateOf(null)
@@ -217,16 +181,12 @@ sealed class Sensor {
     }
 
     fun addReading(time: Instant, glucose: Glucose) {
-        val cutoff = time - RECENT_LIMIT.minutes
-        recentReadings.removeAll { it.time <= cutoff }
+        readings.add(GlucoseReading(time, glucose))
 
-        val reading = GlucoseReading(id, time, glucose)
-        recentReadings.add(reading)
-
-        // We can't use glucose.time here because it isn't accurate enough.
+        // We can't use time here because it isn't accurate enough.
         lastReadingTime = Clock.System.now()
 
-        SensorEvents.glucoseReading.send(reading)
+        SensorEvents.glucoseReading.send(GlucoseEvent(id, time, glucose, latestTrend()))
     }
 
     fun save() {
@@ -303,10 +263,10 @@ object Sensors {
             )
             sensor.id = SensorId(i.toLong())
             val base = 90.0 + i * 30.0
-            sensor.recentReadings.addAll(
+            sensor.readings.replaceReadings(
                 (RECENT_LIMIT - 1 downTo 0).map { minutesAgo ->
                     val mgdl = base + (RECENT_LIMIT - 1 - minutesAgo) * 1.5
-                    GlucoseReading(sensor.id, now - minutesAgo.minutes, Glucose.fromMgDl(mgdl))
+                    GlucoseReading(now - minutesAgo.minutes, Glucose.fromMgDl(mgdl))
                 }
             )
             sensor.lastReadingTime = now
@@ -388,14 +348,10 @@ object Sensors {
                 for (row in rows) {
                     val time = Instant.fromEpochSeconds(row.getLong(0))
                     val glucose = Glucose.fromMgDl(row.getDouble(1))
-                    add(GlucoseReading(sensor.id, time, glucose))
+                    add(GlucoseReading(time, glucose))
                 }
-            }
-            sensor.recentReadings.addAll(readings.asReversed())
-            readings.firstOrNull()?.let { newest ->
-                val cutoff = newest.time - RECENT_LIMIT.minutes
-                sensor.recentReadings.removeAll { it.time <= cutoff }
-            }
+            }.asReversed()
+            sensor.readings.replaceReadings(readings)
         }
 
         if (sensor.active) sensor.connectBluetooth()

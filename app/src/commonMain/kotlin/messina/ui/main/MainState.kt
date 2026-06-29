@@ -1,7 +1,6 @@
 package messina.ui.main
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import messina.Database
 import messina.Glucose
+import messina.sensors.GlucoseReadings
 import messina.sensors.GlucoseReading
 import messina.sensors.SensorEvents
 import messina.sensors.SensorId
@@ -24,7 +24,7 @@ import kotlin.time.Instant
 
 open class MainState : ViewModel() {
     // Sliding cache of raw readings used for chart display.
-    val cache = mutableStateMapOf<SensorId, MutableList<GlucoseReading>>()
+    val cache = mutableStateMapOf<SensorId, GlucoseReadings>()
 
     // Set to either the time of the last glucose reading or the last whole minute, whichever is larger.
     // Causes the chart to shift either when a new glucose reading comes in or a minute passes.
@@ -40,7 +40,8 @@ open class MainState : ViewModel() {
             SensorEvents.glucoseReading.collect { event ->
                 chartEnd = event.time
                 if (event.time in cacheStart..cacheEnd) {
-                    cache.getOrPut(event.sensorId) { mutableStateListOf() }.add(event)
+                    cache.getOrPut(event.sensorId) { GlucoseReadings() }
+                        .add(GlucoseReading(event.time, event.glucose))
                 }
             }
         }
@@ -76,7 +77,7 @@ open class MainState : ViewModel() {
         this.loadJob?.cancel()
         this.loadJob = viewModelScope.launch {
             val data = withContext(Dispatchers.IO) {
-                val result = mutableMapOf<SensorId, MutableList<GlucoseReading>>()
+                val result = mutableMapOf<SensorId, GlucoseReadings>()
                 Database.execute(
                     "SELECT sensor_id, time, glucose FROM glucose_history " +
                             "WHERE time >= ? AND time <= ? ORDER BY time ASC",
@@ -86,8 +87,7 @@ open class MainState : ViewModel() {
                         val id = SensorId(row.getLong(0))
                         val time = Instant.fromEpochSeconds(row.getLong(1))
                         val glucose = Glucose.fromMgDl(row.getDouble(2))
-                        val readings = result.getOrPut(id) { mutableStateListOf() }
-                        readings.add(GlucoseReading(id, time, glucose))
+                        result.getOrPut(id) { GlucoseReadings() }.add(GlucoseReading(time, glucose))
                     }
                 }
                 result

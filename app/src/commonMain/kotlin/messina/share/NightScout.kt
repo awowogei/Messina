@@ -10,7 +10,7 @@ import messina.Database
 import messina.Glucose
 import messina.cryptography.sha1
 import messina.http.Http
-import messina.sensors.GlucoseReading
+import messina.sensors.GlucoseEvent
 import messina.sensors.Sensor
 import kotlin.math.roundToInt
 
@@ -118,20 +118,16 @@ object NightScout {
         }
     }
 
-    suspend fun upload(sensor: Sensor, reading: GlucoseReading) {
+    suspend fun upload(sensor: Sensor, event: GlucoseEvent) {
         if (!syncEnabled || !connected) return
 
         val entry = mapOf(
             "type" to "sgv",
-            "sgv" to reading.glucose.toMgDl().roundToInt(),
-            // Messina regards the trend as a dynamic value so it is not stored anywhere.
-            // As a result this has no guarantee of being the trend belonging to the provided
-            // reading. Given the low frequency of readings though, two competing readings will
-            // likely never happen.
-            "direction" to direction(sensor.latestTrend()),
+            "sgv" to event.glucose.toMgDl().roundToInt(),
+            "direction" to direction(event.trend),
             "device" to "messina://${sensor.name()}/${sensor.id.value}",
-            "date" to reading.time.toEpochMilliseconds(),
-            "dateString" to reading.time.toString(),
+            "date" to event.time.toEpochMilliseconds(),
+            "dateString" to event.time.toString(),
         )
 
         val response = Http.post(

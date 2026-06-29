@@ -7,7 +7,7 @@ import com.juul.kable.WriteType
 import com.juul.kable.characteristicOf
 import messina.Database
 import messina.sensors.EventLog
-import messina.sensors.GlucoseHistory
+import messina.sensors.HistoryEvent
 import messina.sensors.GlucoseReading
 import messina.sensors.Sensor
 import messina.sensors.SensorEvents
@@ -366,7 +366,6 @@ private class Connection(
         for (reading in longHistory.readings) {
             backFill.add(
                 GlucoseReading(
-                    sensor.id,
                     sensor.activationTime + reading.time,
                     sensor.calibrateReading(reading.glucose)
                 )
@@ -392,7 +391,6 @@ private class Connection(
         }
         backFill.add(
             GlucoseReading(
-                sensor.id,
                 sensor.activationTime + shortHistory.time,
                 sensor.calibrateReading(shortHistory.glucose)
             )
@@ -404,34 +402,34 @@ private class Connection(
 
     // Requests the readings missed since the last received one: first the long (5-minute)
     // history, then the short (1-minute) history which replaces overlapping long readings
-    private suspend fun backfill(from: Duration) {
+    private suspend fun backfill(start: Duration) {
         if (this.backFill != null) return
         val backFill = BackFill().also { this.backFill = it }
 
-        info { "Requesting backfill from minute: ${from.inWholeMinutes}" }
+        info { "Requesting backfill from minute: ${start.inWholeMinutes}" }
 
-        writeControl(Libre3.Control.longHistory(from))
-        writeControl(Libre3.Control.shortHistory(from))
+        writeControl(Libre3.Control.longHistory(start))
+        writeControl(Libre3.Control.shortHistory(start))
 
         this.backFill = null
         val readings = backFill.readings
         if (readings.isEmpty()) return
 
-        val from2 = readings.first().time
+        val from = readings.first().time
         val to = readings.last().time
         withContext(Dispatchers.IO) {
             Database.transact(
                 "INSERT OR IGNORE INTO glucose_history (sensor_id, time, glucose) VALUES (?, ?, ?)",
                 readings.map {
                     arrayOf(
-                        it.sensorId.value,
+                        sensor.id.value,
                         it.time.epochSeconds,
                         it.glucose.toMgDl()
                     )
                 }
             )
         }
-        SensorEvents.history.send(GlucoseHistory(sensor.id, from2, to))
+        SensorEvents.history.send(HistoryEvent(sensor.id, from, to))
         info { "backfill complete" }
     }
 }

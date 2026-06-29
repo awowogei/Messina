@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import messina.sensors.GlucoseReadings
 import messina.sensors.GlucoseReading
 import messina.sensors.Sensor
 import messina.sensors.SensorId
@@ -164,7 +165,7 @@ private fun GlucoseDisplay(
 @Composable
 private fun GlucoseDisplays(
     highlightedGlucose: Map<SensorId, Highlight>?,
-    cache: Map<SensorId, List<GlucoseReading>>,
+    cache: Map<SensorId, GlucoseReadings>,
     modifier: Modifier = Modifier,
 ) {
     val colors = run {

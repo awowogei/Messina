@@ -34,7 +34,6 @@ import messina.Glucose
 import messina.sensors.Sensor
 import messina.sensors.SensorId
 import messina.sensors.Sensors
-import messina.sensors.Smoothing
 import messina.ui.AppSlider
 import messina.ui.BackButton
 import messina.ui.SwitchRow
@@ -268,17 +267,16 @@ private fun SensorSettingsBody(sensor: Sensor, onNavigateToEventLog: () -> Unit)
                 },
                 valueRange = sliderRange,
                 steps = steps,
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             )
         }
 
         HorizontalDivider()
         SwitchRow(
             label = "Smoothing",
-            checked = sensor.smoothing == Smoothing.WEAK,
-            onCheckedChange = {
-                sensor.smoothing = if (it) Smoothing.WEAK else Smoothing.NONE
-            },
+            checked = sensor.smoothingEnabled,
+            onCheckedChange = { sensor.smoothingEnabled = it },
         )
 
         HorizontalDivider()

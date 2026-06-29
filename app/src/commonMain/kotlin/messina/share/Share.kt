@@ -38,10 +38,10 @@ object Share {
 
         // Real time followers
         GlobalScope.launch {
-            SensorEvents.glucoseReading.collect { reading ->
-                val sensor = Sensors.get(reading.sensorId) ?: return@collect
+            SensorEvents.glucoseReading.collect { event ->
+                val sensor = Sensors.get(event.sensorId) ?: return@collect
                 try {
-                    NightScout.upload(sensor, reading)
+                    NightScout.upload(sensor, event)
                 } catch (e: Exception) {
                     error { "NightScout live upload failed: $e" }
                 }
@@ -58,7 +58,6 @@ object Share {
                 buildList {
                     for (row in rows) add(
                         GlucoseReading(
-                            sensor.id,
                             Instant.fromEpochSeconds(row.getLong(0)),
                             Glucose.fromMgDl(row.getDouble(1)),
                         )

@@ -1,6 +1,7 @@
 package messina.ui.main
 
 import messina.Glucose
+import messina.sensors.GlucoseReadings
 import messina.sensors.GlucoseReading
 import messina.sensors.SensorId
 import messina.sensors.Sensors
@@ -10,18 +11,21 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 private fun previewReadings(
-    id: SensorId,
     seed: Int,
     start: Double,
     fromMinutesAgo: Int = 360,
     toMinutesAgo: Int = 0,
-): List<GlucoseReading> {
+): GlucoseReadings {
     val rng = Random(seed)
     var mgdl = start
     val now = Clock.System.now()
-    return (fromMinutesAgo downTo toMinutesAgo).map { minutesAgo ->
-        mgdl = (mgdl + rng.nextDouble() * 6 - 3).coerceIn(65.0, 220.0)
-        GlucoseReading(id, now - minutesAgo.minutes, Glucose.fromMgDl(mgdl))
+    return GlucoseReadings().apply {
+        replaceReadings(
+            (fromMinutesAgo downTo toMinutesAgo).map { minutesAgo ->
+                mgdl = (mgdl + rng.nextDouble() * 6 - 3).coerceIn(65.0, 220.0)
+                GlucoseReading(now - minutesAgo.minutes, Glucose.fromMgDl(mgdl))
+            }
+        )
     }
 }
 
@@ -33,10 +37,9 @@ private class PreviewMainState : MainState() {
     init {
         Sensors.active.forEachIndexed { index, sensor ->
             cache[sensor.id] = previewReadings(
-                sensor.id,
                 seed = 42 + index * 13,
                 start = 105.0 + index * 40.0,
-            ).toMutableList()
+            )
         }
     }
 
@@ -55,20 +58,17 @@ private class DisconnectedSensorPreviewMainState : MainState() {
     init {
         Sensors.active.forEachIndexed { index, sensor ->
             cache[sensor.id] = previewReadings(
-                sensor.id,
                 seed = 42 + index * 13,
                 start = 105.0 + index * 40.0,
                 fromMinutesAgo = 90,
-            ).toMutableList()
+            )
         }
-        val oldId = SensorId(99)
-        cache[oldId] = previewReadings(
-            oldId,
+        cache[SensorId(99)] = previewReadings(
             seed = 7,
             start = 140.0,
             fromMinutesAgo = 180,
             toMinutesAgo = 100,
-        ).toMutableList()
+        )
     }
 
     override fun loadData(start: Instant, end: Instant) {}

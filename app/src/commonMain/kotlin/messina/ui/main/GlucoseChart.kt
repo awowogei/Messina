@@ -11,6 +11,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import messina.Glucose
+import messina.sensors.GlucoseReadings
 import messina.sensors.GlucoseReading
 import messina.sensors.SensorId
 import messina.sensors.Sensors
@@ -92,7 +94,7 @@ private class Viewport(initialSpan: Duration) {
 @Composable
 fun GlucoseChart(
     modifier: Modifier = Modifier,
-    data: Map<SensorId, List<GlucoseReading>>,
+    data: Map<SensorId, GlucoseReadings>,
     maxTime: Instant,
     onHighlight: (Map<SensorId, Highlight>?) -> Unit,
     landscapeMode: Boolean = false,
@@ -108,9 +110,16 @@ fun GlucoseChart(
     val effectiveOffset = viewport.offset.value.toLong().milliseconds
     val timeEnd = maxTime - effectiveOffset
     val timeStart = timeEnd - viewport.span
-    val filteredData = data.mapValues { (id, readings) ->
-        val smoothed = Sensors.get(id)?.smoothing?.apply(readings) ?: readings
-        smoothed.filter { it.time in timeStart..timeEnd }
+
+    val displayData by remember(data) {
+        derivedStateOf {
+            data.mapValues { (id, readings) ->
+                if (Sensors.get(id)?.smoothingEnabled == true) readings.smoothed() else readings.raw
+            }
+        }
+    }
+    val filteredData = displayData.mapValues { (_, series) ->
+        series.filter { it.time in timeStart..timeEnd }
     }
 
     val computeHighlight by rememberUpdatedState { x: Float?, chartLeft: Float, chartWidth: Float ->
@@ -120,11 +129,7 @@ fun GlucoseChart(
         }
         onHighlight(highlightTime?.let { time ->
             readingsNear(filteredData, time)?.mapValues { (id, reading) ->
-                val raw = data[id].orEmpty()
-                val end = raw.indexOfLast { it.time <= reading.time }
-                val window = if (end < 0) emptyList() else raw.subList(maxOf(0, end - 14), end + 1)
-                val trend = Sensors.get(id)?.trend(window)
-                Highlight(reading, trend)
+                Highlight(reading, data[id]?.trend(reading.time))
             }
         })
     }
