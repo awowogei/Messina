@@ -3,13 +3,14 @@ package messina.http
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 
 actual object Http {
     actual suspend fun post(
         url: String,
-        data: Map<String, Any>?,
+        data: Any?,
         headers: Map<String, String>?,
         timeout: Int
     ): Response = withContext(Dispatchers.IO) {
@@ -23,7 +24,11 @@ actual object Http {
                 if (getRequestProperty("Content-Type") == null) {
                     setRequestProperty("Content-Type", "application/json")
                 }
-                val json = JSONObject(it).toString()
+                val json = when (it) {
+                    is List<*> -> JSONArray(it).toString()
+                    is Map<*, *> -> JSONObject(it).toString()
+                    else -> throw IllegalArgumentException("Unsupported body type: ${it::class}")
+                }
                 outputStream.writer().use { writer -> writer.write(json) }
             }
         }

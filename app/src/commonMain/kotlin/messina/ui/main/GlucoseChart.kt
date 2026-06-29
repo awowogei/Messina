@@ -77,7 +77,12 @@ private val HIGHLIGHT_SNAP_TOLERANCE = 15.minutes
 // snaps to just one curve as a last resort.
 private val HIGHLIGHT_TIE_TOLERANCE = 1.minutes
 
-/** Mutable pan/zoom state used in landscape mode. Offset is milliseconds back from now. */
+data class Highlight(
+    val reading: GlucoseReading,
+    val trend: Glucose?,
+)
+
+// Mutable pan/zoom state used in landscape mode. Offset is milliseconds back from now.
 private class Viewport(initialSpan: Duration) {
     var span by mutableStateOf(initialSpan)
     val offset = Animatable(0f)
@@ -89,7 +94,7 @@ fun GlucoseChart(
     modifier: Modifier = Modifier,
     data: Map<SensorId, List<GlucoseReading>>,
     maxTime: Instant,
-    onHighlight: (Map<SensorId, GlucoseReading>?) -> Unit,
+    onHighlight: (Map<SensorId, Highlight>?) -> Unit,
     landscapeMode: Boolean = false,
     loadData: (start: Instant, end: Instant) -> Unit,
 ) {
@@ -113,7 +118,15 @@ fun GlucoseChart(
             val fraction = ((it - chartLeft) / chartWidth).coerceIn(0f, 1f)
             timeStart + (fraction * viewport.span.inWholeMilliseconds).toLong().milliseconds
         }
-        onHighlight(highlightTime?.let { readingsNear(filteredData, it) })
+        onHighlight(highlightTime?.let { time ->
+            readingsNear(filteredData, time)?.mapValues { (id, reading) ->
+                val raw = data[id].orEmpty()
+                val end = raw.indexOfLast { it.time <= reading.time }
+                val window = if (end < 0) emptyList() else raw.subList(maxOf(0, end - 14), end + 1)
+                val trend = Sensors.get(id)?.trend(window)
+                Highlight(reading, trend)
+            }
+        })
     }
 
     LaunchedEffect(effectiveOffset, viewport.span) {

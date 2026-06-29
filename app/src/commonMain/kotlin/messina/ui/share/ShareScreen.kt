@@ -30,6 +30,7 @@ import org.jetbrains.compose.resources.painterResource
 fun ShareScreen(
     onBack: () -> Unit,
     onNavigateToLibreView: () -> Unit = {},
+    onNavigateToNightScout: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -64,6 +65,28 @@ fun ShareScreen(
         ) {
             Text(
                 "LibreView",
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Image(
+                painter = painterResource(Res.drawable.chevron_left),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = 180f },
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(onClick = onNavigateToNightScout)
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Nightscout",
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )

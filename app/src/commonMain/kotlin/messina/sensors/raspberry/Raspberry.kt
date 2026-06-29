@@ -3,9 +3,7 @@ package messina.sensors.raspberry
 import com.juul.kable.characteristicOf
 import messina.Glucose
 import messina.sensors.EventLog
-import messina.sensors.GlucoseReading
 import messina.sensors.Sensor
-import messina.sensors.SensorEvents
 import messina.sensors.sensorBluetoothConnection
 import kotlinx.io.Buffer
 import kotlinx.io.readIntLe
@@ -39,12 +37,9 @@ suspend fun raspberryConnection(sensor: Sensor.Raspberry) = sensorBluetoothConne
         val rawMmol = buffer.readIntLe().toDouble()
         val calibratedMmol = rawMmol + sensor.calibrationOffset.toMmol()
         EventLog.push(sensor.id, RaspberryPacket.Reading(rawMmol).serialize())
-        SensorEvents.glucoseReading.send(
-            GlucoseReading(
-                sensor.id,
-                Clock.System.now(),
-                Glucose.fromMmol(calibratedMmol)
-            )
+        sensor.addReading(
+            Clock.System.now(),
+            Glucose.fromMmol(calibratedMmol)
         )
     }
 }

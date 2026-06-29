@@ -18,10 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -29,7 +25,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import messina.share.LibreView
+import messina.share.NightScout
 import messina.ui.BackButton
 import messina.ui.SwitchRow
 import messina.ui.TextInput
@@ -37,9 +33,9 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
 @Composable
-fun LibreViewScreen(onBack: () -> Unit) {
+fun NightScoutScreen(onBack: () -> Unit) {
     DisposableEffect(Unit) {
-        onDispose { LibreView.status = null }
+        onDispose { NightScout.status = null }
     }
     Column(
         modifier = Modifier
@@ -55,7 +51,7 @@ fun LibreViewScreen(onBack: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "LibreView",
+                "Nightscout",
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -65,9 +61,13 @@ fun LibreViewScreen(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BackButton("Share", onClick = onBack)
-                if (LibreView.loggedIn) {
-                    TextButton(onClick = { LibreView.logout() }) {
-                        Text("Log out", fontSize = 16.sp, color = MaterialTheme.colorScheme.error)
+                if (NightScout.connected) {
+                    TextButton(onClick = { NightScout.disconnect() }) {
+                        Text(
+                            "Disconnect",
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 } else {
                     Spacer(Modifier)
@@ -75,12 +75,12 @@ fun LibreViewScreen(onBack: () -> Unit) {
             }
         }
 
-        if (LibreView.loggedIn) LoggedInBody() else LoginBody()
+        if (NightScout.connected) ConnectedBody() else ConnectBody()
     }
 }
 
 @Composable
-private fun LoggedInBody() {
+private fun ConnectedBody() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -89,78 +89,64 @@ private fun LoggedInBody() {
     ) {
         SwitchRow(
             label = "Sync data",
-            checked = LibreView.syncEnabled,
-            onCheckedChange = { LibreView.syncEnabled = it },
+            checked = NightScout.syncEnabled,
+            onCheckedChange = { NightScout.syncEnabled = it },
         )
     }
 }
 
 @Composable
-private fun LoginBody() {
-    var emailMissing by remember { mutableStateOf(false) }
-    var passwordMissing by remember { mutableStateOf(false) }
-
+private fun ConnectBody() {
     Text(
-        text = "Email",
+        text = "URL",
         fontSize = 13.sp,
-        color = if (emailMissing) MaterialTheme.colorScheme.error
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 24.dp, start = 16.dp, bottom = 6.dp)
     )
     TextInput(
-        value = LibreView.email,
-        onValueChange = {
-            LibreView.email = it
-            if (it.isNotEmpty()) emailMissing = false
-        },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        value = NightScout.url,
+        onValueChange = { NightScout.url = it.trim() },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
     )
 
     Text(
-        text = "Password",
+        text = "API secret",
         fontSize = 13.sp,
-        color = if (passwordMissing) MaterialTheme.colorScheme.error
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 24.dp, start = 16.dp, bottom = 6.dp)
     )
     TextInput(
-        value = LibreView.password,
-        onValueChange = {
-            LibreView.password = it
-            if (it.isNotEmpty()) passwordMissing = false
-        },
+        value = NightScout.secret,
+        onValueChange = { NightScout.secret = it },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         visualTransformation = PasswordVisualTransformation(),
     )
 
-    val loggingIn = LibreView.loginJob?.isActive == true
+    val connecting = NightScout.connectJob?.isActive == true
     Button(
         onClick = {
-            if (loggingIn) return@Button
-            emailMissing = LibreView.email.isEmpty()
-            passwordMissing = LibreView.password.isEmpty()
-            if (emailMissing || passwordMissing) return@Button
-            LibreView.status = null
-            LibreView.loginJob = GlobalScope.launch {
+            if (connecting) return@Button
+            NightScout.status = null
+            NightScout.connectJob = GlobalScope.launch {
                 try {
-                    LibreView.login()
+                    NightScout.connect()
                 } catch (e: Throwable) {
-                    LibreView.status = e.message ?: "Login failed"
+                    NightScout.status = e.message ?: "Connection failed"
                 } finally {
-                    LibreView.loginJob = null
+                    NightScout.connectJob = null
                 }
             }
         },
-        enabled = !loggingIn,
+        enabled = !connecting,
         modifier = Modifier
             .padding(start = 16.dp, end = 16.dp, top = 40.dp, bottom = 16.dp)
             .fillMaxWidth()
             .height(52.dp),
     ) {
-        Text(if (loggingIn) "Logging in…" else "Login", fontSize = 17.sp)
+        Text(if (connecting) "Connecting…" else "Connect", fontSize = 17.sp)
     }
 
-    LibreView.status?.let {
+    NightScout.status?.let {
         Text(
             text = it,
             fontSize = 13.sp,

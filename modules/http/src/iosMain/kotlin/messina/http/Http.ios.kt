@@ -8,7 +8,7 @@ import kotlin.coroutines.*
 actual object Http {
     actual suspend fun post(
         url: String,
-        data: Map<String, Any>?,
+        data: Any?,
         headers: Map<String, String>?,
         timeout: Int
     ): Response = request("POST", url, data, headers, timeout)
@@ -23,7 +23,7 @@ actual object Http {
     private suspend fun request(
         method: String,
         url: String,
-        data: Map<String, Any>?,
+        data: Any?,
         headers: Map<String, String>?,
         timeout: Int
     ): Response = suspendCancellableCoroutine { cont ->

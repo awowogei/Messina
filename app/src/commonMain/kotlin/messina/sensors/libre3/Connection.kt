@@ -35,8 +35,8 @@ private object Services {
     object security {
         val SERVICE        = Uuid.parse("0898203a-ef89-11e9-81b4-2a2ae2dbcce4")
         val COMMANDS       = Uuid.parse("08982198-ef89-11e9-81b4-2a2ae2dbcce4")
-        val CHALLENGE = Uuid.parse("089822ce-ef89-11e9-81b4-2a2ae2dbcce4")
-        val CRYPTO    = Uuid.parse("089823fa-ef89-11e9-81b4-2a2ae2dbcce4")
+        val CHALLENGE      = Uuid.parse("089822ce-ef89-11e9-81b4-2a2ae2dbcce4")
+        val CRYPTO         = Uuid.parse("089823fa-ef89-11e9-81b4-2a2ae2dbcce4")
     }
 
     object data {
@@ -44,8 +44,8 @@ private object Services {
         val SENSOR_CONTROL = Uuid.parse("08981338-ef89-11e9-81b4-2a2ae2dbcce4")
         val SENSOR_STATUS  = Uuid.parse("08981482-ef89-11e9-81b4-2a2ae2dbcce4")
         val EVENT_LOG      = Uuid.parse("08981bee-ef89-11e9-81b4-2a2ae2dbcce4")
-        val READINGS   = Uuid.parse("0898177a-ef89-11e9-81b4-2a2ae2dbcce4")
-        val LONG_HISTORY  = Uuid.parse("0898195a-ef89-11e9-81b4-2a2ae2dbcce4")
+        val READINGS       = Uuid.parse("0898177a-ef89-11e9-81b4-2a2ae2dbcce4")
+        val LONG_HISTORY   = Uuid.parse("0898195a-ef89-11e9-81b4-2a2ae2dbcce4")
         val SHORT_HISTORY  = Uuid.parse("08981ab8-ef89-11e9-81b4-2a2ae2dbcce4")
         val FACTORY_DATA   = Uuid.parse("08981d24-ef89-11e9-81b4-2a2ae2dbcce4")
         // TODO: What is this for?
@@ -302,12 +302,9 @@ private class Connection(
         }
 
         if (reading.isValid()) {
-            SensorEvents.glucoseReading.send(
-                GlucoseReading(
-                    sensor.id,
-                    sensor.activationTime + reading.time,
-                    sensor.calibrateReading(reading.glucose())
-                )
+            sensor.addReading(
+                sensor.activationTime + reading.time,
+                sensor.calibrateReading(reading.glucose())
             )
         }
     }

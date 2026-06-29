@@ -1,7 +1,8 @@
-package messina.backup
+package messina.share
 
 import messina.Database
 import messina.Glucose
+import messina.logging.error
 import messina.sensors.GlucoseReading
 import messina.sensors.SensorEvents
 import messina.sensors.Sensors
@@ -13,23 +14,42 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-object Backup {
+object Share {
     init {
-        registerSensors()
+        // Register sensors
+        GlobalScope.launch {
+            SensorEvents.sensorAdded.collect { sensor ->
+                LibreView.register(sensor)
+            }
+        }
+
+        // Backup
         GlobalScope.launch {
             val interval = 60.minutes
             var lastSync = getLastSync()
             while (true) {
                 val wait = lastSync + interval - Clock.System.now()
                 if (wait > 0.seconds) delay(wait)
-                upload(lastSync)
+                backup(lastSync)
                 lastSync = Clock.System.now()
                 setLastSync(lastSync)
             }
         }
+
+        // Real time followers
+        GlobalScope.launch {
+            SensorEvents.glucoseReading.collect { reading ->
+                val sensor = Sensors.get(reading.sensorId) ?: return@collect
+                try {
+                    NightScout.upload(sensor, reading)
+                } catch (e: Exception) {
+                    error { "NightScout live upload failed: $e" }
+                }
+            }
+        }
     }
 
-    private suspend fun upload(since: Instant) {
+    private suspend fun backup(since: Instant) {
         for (sensor in Sensors.active) {
             val readings = Database.execute(
                 "SELECT time, glucose FROM glucose_history WHERE sensor_id = ? AND time > ? ORDER BY time ASC",
@@ -47,14 +67,6 @@ object Backup {
             }
 
             LibreView.upload(sensor, readings)
-        }
-    }
-
-    private fun registerSensors() {
-        GlobalScope.launch {
-            SensorEvents.sensorAdded.collect { sensor ->
-                LibreView.register(sensor)
-            }
         }
     }
 

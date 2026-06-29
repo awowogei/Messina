@@ -41,7 +41,7 @@ data class SensorId(val value: Long)
 @Serializable
 data class Smoothing(private val alphaPerMinute: Double) {
     fun apply(readings: List<GlucoseReading>): List<GlucoseReading> {
-        if (readings.isEmpty() || this == DISABLED) return readings
+        if (readings.isEmpty() || this == NONE) return readings
 
         val decay = 1.0 - this.alphaPerMinute
         val out = ArrayList<GlucoseReading>(readings.size)
@@ -58,8 +58,8 @@ data class Smoothing(private val alphaPerMinute: Double) {
     }
 
     companion object {
-        val DISABLED = Smoothing(1.0)
-        val ENABLED = Smoothing(0.3)
+        val NONE = Smoothing(1.0)
+        val WEAK = Smoothing(0.3)
     }
 }
 
@@ -149,7 +149,7 @@ sealed class Sensor {
         }
 
     @SerialName("smoothing")
-    private var _smoothing = Smoothing.DISABLED
+    private var _smoothing = Smoothing.NONE
     private val smoothingState by lazy { mutableStateOf(_smoothing) }
     var smoothing: Smoothing
         get() = smoothingState.value
@@ -162,6 +162,18 @@ sealed class Sensor {
     @Transient
     val recentReadings = mutableStateListOf<GlucoseReading>()
     fun latestReading(): GlucoseReading? = this.smoothing.apply(recentReadings).lastOrNull()
+
+    fun latestTrend(): Glucose? = trend(recentReadings)
+
+    fun trend(readings: List<GlucoseReading>): Glucose? {
+        val smoothed = Smoothing.WEAK.apply(readings)
+        if (smoothed.size < 2) return null
+        val last = smoothed[smoothed.size - 1]
+        val prev = smoothed[smoothed.size - 2]
+        val elapsedMins = (last.time - prev.time).toDouble(DurationUnit.MINUTES)
+        if (elapsedMins <= 0.0 || elapsedMins > 5.0) return null
+        return Glucose.fromMgDl((last.glucose.toMgDl() - prev.glucose.toMgDl()) / elapsedMins)
+    }
 
     // Displays as the time since the last reading above the glucose on the main screen
     var lastReadingTime: Instant? by mutableStateOf(null)
@@ -197,17 +209,24 @@ sealed class Sensor {
         is Raspberry -> Duration.INFINITE
     }
 
-    // TODO: These are placeholder names.
     fun name(): String {
         return when (this) {
-            is Libre3 -> "Libre 3 · ${
-                this.serialNumber.toHexString().takeLast(6).uppercase()
-            }"
-
-            is Raspberry -> "Raspberry · ${
-                this.macAddress.toHexString().takeLast(6).uppercase()
-            }"
+            is Libre3 -> "Libre 3"
+            is Raspberry -> "Raspberry"
         }
+    }
+
+    fun addReading(time: Instant, glucose: Glucose) {
+        val cutoff = time - RECENT_LIMIT.minutes
+        recentReadings.removeAll { it.time <= cutoff }
+
+        val reading = GlucoseReading(id, time, glucose)
+        recentReadings.add(reading)
+
+        // We can't use glucose.time here because it isn't accurate enough.
+        lastReadingTime = Clock.System.now()
+
+        SensorEvents.glucoseReading.send(reading)
     }
 
     fun save() {
@@ -241,21 +260,12 @@ object Sensors {
     init {
         GlobalScope.launch {
             SensorEvents.glucoseReading.collect { event ->
-                val sensor = get(event.sensorId) ?: return@collect
-                sensor.recentReadings.add(event)
-
-                val cutoff = event.time - RECENT_LIMIT.minutes
-                sensor.recentReadings.removeAll { it.time <= cutoff }
-
-                // We can't use event.time here because it isn't accurate enough.
-                sensor.lastReadingTime = Clock.System.now()
-
                 Database.execute(
                     "INSERT OR REPLACE INTO glucose_history (sensor_id, time, glucose) VALUES (?, ?, ?)",
                     arrayOf(
                         event.sensorId.value,
                         event.time.epochSeconds,
-                        event.glucose.toMgDl()
+                        event.glucose.toMgDl(),
                     )
                 )
             }
@@ -305,8 +315,6 @@ object Sensors {
     }
 
     fun add(sensor: Sensor) {
-        // The unique id is derived from the sensor info and thus stays static between scans of
-        // the same sensor.
         val identifier = run {
             val buffer = Buffer()
             when (sensor) {

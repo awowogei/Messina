@@ -4,7 +4,7 @@ import messina.Glucose
 import messina.sensors.Sensor
 import messina.sensors.Sensors
 import messina.sensors.Tag
-import messina.backup.LibreView
+import messina.share.LibreView
 import messina.logging.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

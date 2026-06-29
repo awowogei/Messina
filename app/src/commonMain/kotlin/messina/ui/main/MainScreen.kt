@@ -57,17 +57,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
-import messina.Glucose
 import messina.sensors.GlucoseReading
 import messina.sensors.Sensor
 import messina.sensors.SensorId
 import messina.sensors.Sensors
-import messina.sensors.Smoothing
 import messina.settings.AlarmController
-import messina.backup.LibreView
+import messina.share.LibreView
 import messina.utils.Time
 import messina.utils.format
 import kotlinx.coroutines.delay
+import messina.Glucose
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
@@ -109,21 +108,28 @@ private fun TimeSinceLabel(
 @Composable
 private fun GlucoseDisplay(
     sensor: Sensor,
-    highlightedGlucose: GlucoseReading?,
-    cache: Map<SensorId, List<GlucoseReading>>,
+    highlight: Highlight?,
     scale: Float,
     modifier: Modifier = Modifier,
     color: Color? = null,
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val currentGlucose = highlightedGlucose ?: sensor.latestReading()
+    val reading: GlucoseReading?
+    val trend: Glucose?
+    if (highlight != null) {
+        reading = highlight.reading
+        trend = highlight.trend
+    } else {
+        reading = sensor.latestReading()
+        trend = sensor.latestTrend()
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
     ) {
-        if (highlightedGlucose != null) {
+        if (highlight != null) {
             Text(
-                text = Time.fromInstant(highlightedGlucose.time).toHHMM(),
+                text = Time.fromInstant(highlight.reading.time).toHHMM(),
                 fontSize = (14f * scale).sp,
                 color = colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -136,27 +142,17 @@ private fun GlucoseDisplay(
             )
         }
         Text(
-            text = currentGlucose?.glucose?.format(decimals = 2) ?: "---",
+            text = reading?.glucose?.format(decimals = 2) ?: "---",
             fontSize = (64f * scale).sp,
             color = color ?: colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
 
-        // If highlighted compute trend from cache, else from the newest readings
-        val trendReadings: List<GlucoseReading> = if (highlightedGlucose != null) {
-            val readings = cache[highlightedGlucose.sensorId].orEmpty()
-            val end = readings.indexOfLast { it.time <= highlightedGlucose.time }
-            if (end < 0) emptyList() else readings.subList(maxOf(0, end - 14), end + 1)
-        } else {
-            sensor.recentReadings
-        }
-        val trend: Glucose = Smoothing.ENABLED.apply(trendReadings)
-            .takeIf { it.size >= 2 }
-            ?.let { Glucose.fromMgDl(it[it.size - 1].glucose.toMgDl() - it[it.size - 2].glucose.toMgDl()) }
-            ?: Glucose.fromMgDl(0.0)
         Text(
-            text = "%+.2f/min".format(trend.value),
+            text = if (reading != null) {
+                if (trend != null) "%+.2f/min".format(trend.value) else "--"
+            } else "",
             fontSize = (16f * scale).sp,
             color = colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -167,7 +163,7 @@ private fun GlucoseDisplay(
 
 @Composable
 private fun GlucoseDisplays(
-    highlightedGlucose: Map<SensorId, GlucoseReading>?,
+    highlightedGlucose: Map<SensorId, Highlight>?,
     cache: Map<SensorId, List<GlucoseReading>>,
     modifier: Modifier = Modifier,
 ) {
@@ -204,8 +200,7 @@ private fun GlucoseDisplays(
                 val sensor = sensors.first()
                 GlucoseDisplay(
                     sensor = sensor,
-                    highlightedGlucose = highlightedGlucose?.get(sensor.id),
-                    cache = cache,
+                    highlight = highlightedGlucose?.get(sensor.id),
                     scale = 1f,
                     color = colors[sensor.id],
                     modifier = Modifier.fillMaxWidth(),
@@ -219,8 +214,7 @@ private fun GlucoseDisplays(
                 for (sensor in sensors) {
                     GlucoseDisplay(
                         sensor = sensor,
-                        highlightedGlucose = highlightedGlucose?.get(sensor.id),
-                        cache = cache,
+                        highlight = highlightedGlucose?.get(sensor.id),
                         scale = 0.9f,
                         color = colors[sensor.id],
                     )
@@ -234,8 +228,7 @@ private fun GlucoseDisplays(
                 val first = sensors.first()
                 GlucoseDisplay(
                     sensor = first,
-                    highlightedGlucose = highlightedGlucose?.get(first.id),
-                    cache = cache,
+                    highlight = highlightedGlucose?.get(first.id),
                     scale = 0.55f,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                     color = colors[first.id],
@@ -247,8 +240,7 @@ private fun GlucoseDisplays(
                     for (sensor in sensors.subList(1, 3)) {
                         GlucoseDisplay(
                             sensor = sensor,
-                            highlightedGlucose = highlightedGlucose?.get(sensor.id),
-                            cache = cache,
+                            highlight = highlightedGlucose?.get(sensor.id),
                             scale = 0.55f,
                             color = colors[sensor.id],
                         )
@@ -268,8 +260,7 @@ private fun GlucoseDisplays(
                         for (sensor in column) {
                             GlucoseDisplay(
                                 sensor = sensor,
-                                highlightedGlucose = highlightedGlucose?.get(sensor.id),
-                                cache = cache,
+                                highlight = highlightedGlucose?.get(sensor.id),
                                 scale = 0.55f,
                                 color = colors[sensor.id],
                             )
@@ -344,7 +335,7 @@ fun MainScreen(
     var showAddMenu by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var highlightedGlucose by remember { mutableStateOf<Map<SensorId, GlucoseReading>?>(null) }
+    var highlightedGlucose by remember { mutableStateOf<Map<SensorId, Highlight>?>(null) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         if (maxWidth > maxHeight) {

@@ -1,7 +1,10 @@
 package messina
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -9,9 +12,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.keepScreenOn
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.remember
 import messina.sensors.Sensors
-import messina.backup.Backup
+import messina.share.Share
 import messina.settings.Settings
 import messina.settings.Theme
 import messina.ui.main.MainScreen
@@ -25,6 +30,7 @@ import messina.ui.settings.AdvancedSettingsScreen
 import messina.ui.settings.AlarmScreen
 import messina.ui.settings.SettingsScreen
 import messina.ui.share.LibreViewScreen
+import messina.ui.share.NightScoutScreen
 import messina.ui.share.ShareScreen
 
 object GlobalState {
@@ -33,13 +39,20 @@ object GlobalState {
         Database
         Settings
         Sensors
-        Backup
+        Share
     }
 }
 
 @Composable
 fun App() {
     MaterialTheme(colorScheme = Theme.colorScheme()) {
+        // Workaround for text fields not being unfocused when the keyboard is hidden
+        val focusManager = LocalFocusManager.current
+        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        LaunchedEffect(imeVisible) {
+            if (!imeVisible) focusManager.clearFocus()
+        }
+
         val navController = rememberNavController()
         NavHost(
             modifier = if (Settings.keepScreenOn) Modifier.keepScreenOn() else Modifier,
@@ -109,10 +122,14 @@ fun App() {
                 ShareScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToLibreView = { navController.navigate("share/libreview") },
+                    onNavigateToNightScout = { navController.navigate("share/nightscout") },
                 )
             }
             composable("share/libreview") {
                 LibreViewScreen(onBack = { navController.popBackStack() })
+            }
+            composable("share/nightscout") {
+                NightScoutScreen(onBack = { navController.popBackStack() })
             }
             composable("settings") {
                 SettingsScreen(

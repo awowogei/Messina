@@ -275,9 +275,9 @@ private fun SensorSettingsBody(sensor: Sensor, onNavigateToEventLog: () -> Unit)
         HorizontalDivider()
         SwitchRow(
             label = "Smoothing",
-            checked = sensor.smoothing == Smoothing.ENABLED,
+            checked = sensor.smoothing == Smoothing.WEAK,
             onCheckedChange = {
-                sensor.smoothing = if (it) Smoothing.ENABLED else Smoothing.DISABLED
+                sensor.smoothing = if (it) Smoothing.WEAK else Smoothing.NONE
             },
         )
 

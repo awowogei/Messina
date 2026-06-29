@@ -9,7 +9,7 @@ data class Response(
 expect object Http {
     suspend fun post(
         url: String,
-        data: Map<String, Any>? = null,
+        data: Any? = null,
         headers: Map<String, String>? = null,
         timeout: Int = 10_000
     ): Response
