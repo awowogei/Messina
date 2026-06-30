@@ -20,6 +20,10 @@ internal expect suspend fun acquirePeripheral(
     advertisedName: String?
 ): Peripheral
 
+// Create an OS-level bond with the device (Dexcom G7 requires bonding). On iOS bonding is
+// established implicitly during pairing, so this is a no-op there.
+internal expect suspend fun bondDevice(address: ByteArray): Boolean
+
 suspend fun sensorBluetoothConnection(
     sensorId: SensorId,
     address: ByteArray,

@@ -5,6 +5,7 @@ android-minSdk = "30"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
 androidx-appcompat = "1.7.1"
+bignum = "0.3.10"
 androidx-core = "1.18.0"
 androidx-espresso = "3.7.0"
 androidx-lifecycle = "2.10.0"
@@ -26,6 +27,7 @@ material = "1.14.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+bignum = { module = "com.ionspin.kotlin:bignum", version.ref = "bignum" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kable-core = { module = "com.juul.kable:kable-core", version.ref = "kable" }

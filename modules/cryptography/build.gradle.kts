@@ -24,6 +24,7 @@ kotlin {
         minSdk = 24
 
         withHostTestBuilder {
+        }.configure {
         }
 
         withDeviceTestBuilder {
@@ -69,7 +70,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(libs.kotlin.stdlib)
-                // Add KMP dependencies here
+                implementation(libs.bignum)
             }
         }
 
