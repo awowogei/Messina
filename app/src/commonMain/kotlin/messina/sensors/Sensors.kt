@@ -7,8 +7,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import messina.Database
 import messina.Glucose
+import messina.sensors.Sensor.G7
 import messina.sensors.Sensor.Libre3
 import messina.sensors.Sensor.Raspberry
+import messina.sensors.g7.g7Connection
 import messina.sensors.libre3.libre3Connection
 import messina.sensors.raspberry.raspberryConnection
 import messina.logging.error
@@ -97,6 +99,35 @@ sealed class Sensor {
     }
 
     @Serializable
+    @SerialName("DexcomG7")
+    class G7(
+        val serialNumber: ByteArray,
+        val macAddress: ByteArray,
+        // 4-byte BLE pairing PIN, used as the EC-JPAKE password
+        val pin: ByteArray,
+        val activationTime: Instant,
+        @SerialName("sharedKey")
+        private var _sharedKey: ByteArray? = null,
+        // Marks the last reading received; a gap larger than 5 minutes triggers a backfill.
+        @SerialName("lastReceived")
+        private var _lastReceived: Duration = 5.minutes,
+    ) : Sensor() {
+        var sharedKey: ByteArray?
+            get() = _sharedKey
+            set(value) {
+                _sharedKey = value
+                this.save()
+            }
+
+        var lastReceived: Duration
+            get() = _lastReceived
+            set(value) {
+                _lastReceived = value
+                this.save()
+            }
+    }
+
+    @Serializable
     @SerialName("RaspberryPi")
     class Raspberry(
         val macAddress: ByteArray = "B827EB759540".hexToByteArray(),
@@ -153,6 +184,7 @@ sealed class Sensor {
             try {
                 when (this@Sensor) {
                     is Libre3 -> libre3Connection(this@Sensor)
+                    is G7 -> g7Connection(this@Sensor)
                     is Raspberry -> raspberryConnection(this@Sensor)
                 }
             } catch (e: CancellationException) {
@@ -170,12 +202,14 @@ sealed class Sensor {
 
     fun expiresIn(): Duration = when (this) {
         is Libre3 -> activationTime + 15.days - Clock.System.now()
+        is G7 -> activationTime + 15.days - Clock.System.now()
         is Raspberry -> Duration.INFINITE
     }
 
     fun name(): String {
         return when (this) {
             is Libre3 -> "Libre 3"
+            is G7 -> "Dexcom G7"
             is Raspberry -> "Raspberry"
         }
     }
@@ -284,6 +318,11 @@ object Sensors {
                     buffer.write(sensor.serialNumber)
                 }
 
+                is G7 -> {
+                    buffer.writeByte(2)
+                    buffer.write(sensor.serialNumber)
+                }
+
                 is Raspberry -> {
                     buffer.writeByte(1)
                 }
@@ -321,6 +360,15 @@ object Sensors {
                 if (savedSensor.blePin.contentEquals(sensor.blePin)) {
                     // NOTE: This triggers sensor.save() through its setter, but it's no big deal
                     // saving twice
+                    sensor.sharedKey = savedSensor.sharedKey
+                }
+            }
+
+            is G7 -> {
+                sensor as G7
+                sensor.lastReceived = savedSensor.lastReceived
+                // A PIN change requires a fresh J-PAKE key agreement
+                if (savedSensor.pin.contentEquals(sensor.pin)) {
                     sensor.sharedKey = savedSensor.sharedKey
                 }
             }

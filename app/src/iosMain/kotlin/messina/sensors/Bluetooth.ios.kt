@@ -39,3 +39,6 @@ internal actual suspend fun acquirePeripheral(
     defaults.setObject(advertisement.identifier.toString(), forKey = identifierKey)
     return Peripheral(advertisement)
 }
+
+// iOS establishes bonding implicitly during pairing; there is no explicit createBond.
+internal actual suspend fun bondDevice(address: ByteArray): Boolean = true

@@ -57,6 +57,7 @@ kotlin {
             implementation(projects.modules.logging)
             implementation(projects.modules.http)
             implementation(projects.modules.cryptography)
+            implementation(libs.bignum)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
