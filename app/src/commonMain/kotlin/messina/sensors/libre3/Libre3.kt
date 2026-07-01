@@ -25,7 +25,7 @@ import kotlin.time.Instant
 
 object Libre3 {
     suspend fun initialize(tag: Tag) {
-        // TODO: Throws uninteligeble IoException
+        // TODO: Throws unintelligible IoException
         val response = tag.transceive(nfcInitializationCommand())
         val initResponse = NfcInitializationResponse(response)
 
@@ -269,7 +269,7 @@ private fun nfcActivationCommand(sensorState: Libre3.State, accountId: UInt): By
     val header = byteArrayOf(
         0x02.toByte(),
         // Activate ELSE switch receiver
-        if (sensorState == Libre3.State.INSERTION_DETECTED) 0xA8.toByte() else 0xA0.toByte(),
+        if (sensorState == Libre3.State.STORAGE) 0xA8.toByte() else 0xA0.toByte(),
         0x7A.toByte(),
     )
 
